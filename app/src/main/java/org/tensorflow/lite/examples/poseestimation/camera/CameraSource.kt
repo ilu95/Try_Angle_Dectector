@@ -30,6 +30,8 @@ import kotlin.coroutines.resumeWithException
 import android.os.Looper
 import android.util.Size
 import org.tensorflow.lite.examples.poseestimation.MainActivity
+import java.io.DataOutputStream
+import java.net.Socket
 
 
 class CameraSource(
@@ -38,7 +40,48 @@ class CameraSource(
 ) {
     var latestPerson: Person? = null
 
+    // Socket과 DataOutputStream을 멤버 변수로 추가
+    private var socket: Socket? = null
+    private var dataOutputStream: DataOutputStream? = null
 
+    // 라즈베리 파이로 데이터 전송
+    private fun sendToRaspberryPi(message: String) {
+        Thread {
+            try {
+                // 소켓과 DataOutputStream이 이미 열려 있는지 확인
+                if (socket == null || socket!!.isClosed) {
+                    socket = Socket("192.168.1.198", 5555)
+                    dataOutputStream = DataOutputStream(socket!!.getOutputStream())
+                }
+                // 메시지를 전송하고 줄 바꿈 문자를 추가하여 메시지의 끝을 표시
+                dataOutputStream?.writeBytes("$message\n")
+            } catch (e: Exception) {
+                e.printStackTrace()
+            }
+        }.start()
+    }
+
+    // 앱이 시작될 때 Socket과 DataOutputStream을 초기화
+    private fun start() {
+        Thread {
+            try {
+                socket = Socket("192.168.1.198", 5555)
+                dataOutputStream = DataOutputStream(socket!!.getOutputStream())
+            } catch (e: Exception) {
+                e.printStackTrace()
+            }
+        }.start()
+    }
+
+    // 앱이 종료될 때 Socket과 DataOutputStream을 닫음
+    fun stop() {
+        try {
+            dataOutputStream?.close()
+            socket?.close()
+        } catch (e: Exception) {
+            e.printStackTrace()
+        }
+    }
     private fun checkCameraSupport(): Boolean {
         val characteristics = cameraManager.getCameraCharacteristics(cameraId)
         val map = characteristics.get(CameraCharacteristics.SCALER_STREAM_CONFIGURATION_MAP)
@@ -272,12 +315,14 @@ class CameraSource(
             listener?.onDetectedInfo(persons[0].score, classificationResult)
         }
         if (persons.isNotEmpty()) {
+            start()
             val person = persons[0]
             if (MainActivity.adjustMode) {
                 if(person.score > MIN_CONFIDENCE) {
                     val (ankle, shoulder) = person.getAnkleAndShoulder()
 
                     if (ankle != null) {
+                        sendToRaspberryPi("1")
                         val targetAnkleY = bitmap.height.toFloat() - 60f
                         if (ankle.y < targetAnkleY) {
                             showToast("발목이 하단으로부터 ${targetAnkleY - ankle.y}만큼 위에 있습니다. 아래로 이동해주세요.")
@@ -305,6 +350,7 @@ class CameraSource(
                     val distanceY = targetY - center.y
                     if(person.score > MIN_CONFIDENCE){
                         showToast("객체가 중앙으로부터 X: ${distanceX}, Y: ${distanceY}만큼 떨어져 있습니다.")
+                        sendToRaspberryPi("2")
                     }
                 }
             }

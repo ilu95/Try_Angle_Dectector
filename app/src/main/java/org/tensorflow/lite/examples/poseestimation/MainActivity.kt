@@ -143,6 +143,7 @@ class MainActivity : AppCompatActivity() {
 
         val adjustButton: Button = findViewById(R.id.adjustButton)
 
+
         adjustButton.setOnClickListener {
             showToast("버튼이 클릭되었습니다")
             adjustMode = !adjustMode
